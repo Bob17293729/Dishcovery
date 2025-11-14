@@ -39,7 +39,9 @@ function App() {
           loading={loading}
           setLoading={setLoading}
         />
-        <MarkdownDisplay markdown={markdown} />
+        {/* 当还没有菜品时，Markdown 显示在 MenuUpload 下方 */}
+        {dishes.length === 0 && <MarkdownDisplay markdown={markdown} />}
+        {/* 当开始生成菜品时，先显示菜品列表 */}
         {dishes.length > 0 && (
           <DishList 
             dishes={dishes}
@@ -48,6 +50,8 @@ function App() {
             setLoading={setLoading}
           />
         )}
+        {/* 当有菜品时，Markdown 显示在页面最下面 */}
+        {dishes.length > 0 && <MarkdownDisplay markdown={markdown} />}
       </div>
     </div>
   )
