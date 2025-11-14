@@ -28,16 +28,6 @@ app.add_middleware(
 openai_service = OpenAIService()
 
 
-class DishInfo(BaseModel):
-    name: str
-    translation: Optional[str] = None
-    description: Optional[str] = None
-
-
-class TranslateRequest(BaseModel):
-    dishes: List[dict]  # 包含 name 和 menu_description 的字典列表
-
-
 class GenerateImageRequest(BaseModel):
     dish_name: str
     translation: Optional[str] = None
@@ -103,18 +93,6 @@ async def analyze_menu(file: UploadFile = File(...)):
             "X-Accel-Buffering": "no"  # 禁用 nginx 缓冲
         }
     )
-
-
-@app.post("/api/translate")
-async def translate(request: TranslateRequest):
-    """
-    只翻译菜品名称，不生成描述
-    """
-    try:
-        dishes = await openai_service.translate_only(request.dishes)
-        return {"dishes": dishes}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"翻译失败: {str(e)}")
 
 
 @app.post("/api/get-dish-detail")
