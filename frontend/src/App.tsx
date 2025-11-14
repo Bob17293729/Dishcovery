@@ -1,6 +1,13 @@
+/**
+ * 主应用组件
+ * 支持两阶段流式处理：
+ * 1. 图片 → Markdown（实时显示）
+ * 2. Markdown → NDJSON（实时显示菜品卡片）
+ */
 import { useState } from 'react'
 import MenuUpload from './components/MenuUpload'
 import DishList from './components/DishList'
+import MarkdownDisplay from './components/MarkdownDisplay'
 
 export interface Dish {
   name: string
@@ -17,6 +24,7 @@ export interface Dish {
 
 function App() {
   const [dishes, setDishes] = useState<Dish[]>([])
+  const [markdown, setMarkdown] = useState<string>('')
   const [loading, setLoading] = useState(false)
 
   return (
@@ -27,9 +35,11 @@ function App() {
         </h1>
         <MenuUpload 
           onDishesLoaded={setDishes}
+          onMarkdownUpdate={setMarkdown}
           loading={loading}
           setLoading={setLoading}
         />
+        <MarkdownDisplay markdown={markdown} />
         {dishes.length > 0 && (
           <DishList 
             dishes={dishes}

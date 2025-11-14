@@ -49,8 +49,10 @@ async def root():
 @app.post("/api/analyze-menu")
 async def analyze_menu(file: UploadFile = File(...)):
     """
-    分析菜单图片，提取菜品名称和描述（流式返回）
-    使用 Server-Sent Events (SSE) 格式逐个发送菜品
+    分析菜单图片，两阶段流式返回：
+    1. 第一阶段：Markdown 流式输出
+    2. 第二阶段：NDJSON 菜品流式输出
+    使用 Server-Sent Events (SSE) 格式
     """
     async def generate():
         try:
@@ -63,26 +65,24 @@ async def analyze_menu(file: UploadFile = File(...)):
             
             # 验证文件大小（限制为10MB）
             if len(contents) > 10 * 1024 * 1024:
-                yield f"data: {json.dumps({'error': '图片文件过大，请上传小于10MB的图片'})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'error': '图片文件过大，请上传小于10MB的图片'})}\n\n"
                 return
             
-            # 调用OpenAI服务识别菜品（流式）
-            print("🤖 开始调用OpenAI API识别菜品（流式）...")
+            # 调用OpenAI服务进行两阶段流式处理
+            print("🤖 开始调用OpenAI API（两阶段流式）...")
             
-            async for dish in openai_service.analyze_menu_image_stream(contents):
-                # 发送每个菜品
-                yield f"data: {json.dumps({'dish': dish})}\n\n"
+            async for chunk in openai_service.analyze_menu_image_stream(contents):
+                # 转发所有类型的消息
+                yield f"data: {json.dumps(chunk)}\n\n"
             
-            # 发送完成信号
-            yield f"data: {json.dumps({'done': True})}\n\n"
-            print("✅ 流式识别完成")
+            print("✅ 流式处理完成")
             
         except Exception as e:
             import traceback
             error_detail = str(e)
             print(f"❌ 分析菜单错误: {error_detail}")
             print(traceback.format_exc())
-            yield f"data: {json.dumps({'error': f'分析菜单失败: {error_detail}'})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'error': f'分析菜单失败: {error_detail}'})}\n\n"
     
     return StreamingResponse(
         generate(),

@@ -1,13 +1,20 @@
+/**
+ * 菜单上传组件
+ * 支持两阶段流式处理：
+ * 1. 图片 → Markdown（流式显示）
+ * 2. Markdown → NDJSON（流式解析并显示菜品卡片）
+ */
 import { useState, useRef } from 'react'
 import { Dish } from '../App'
 
 interface MenuUploadProps {
   onDishesLoaded: (dishes: Dish[]) => void
+  onMarkdownUpdate: (markdown: string) => void
   loading: boolean
   setLoading: (loading: boolean) => void
 }
 
-const MenuUpload = ({ onDishesLoaded, loading, setLoading }: MenuUploadProps) => {
+const MenuUpload = ({ onDishesLoaded, onMarkdownUpdate, loading, setLoading }: MenuUploadProps) => {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -29,6 +36,7 @@ const MenuUpload = ({ onDishesLoaded, loading, setLoading }: MenuUploadProps) =>
   const handleUpload = async (file: File) => {
     setLoading(true)
     const dishes: Dish[] = [] // 用于累积接收到的菜品
+    let markdownBuffer = '' // 用于累积 Markdown 内容
     
     try {
       console.log('📤 开始上传图片...')
@@ -36,7 +44,7 @@ const MenuUpload = ({ onDishesLoaded, loading, setLoading }: MenuUploadProps) =>
       formData.append('file', file)
 
       // 流式分析菜单
-      console.log('🔍 步骤1: 调用菜单识别API（流式）...')
+      console.log('🔍 开始两阶段流式处理...')
       const analyzeResponse = await fetch('/api/analyze-menu', {
         method: 'POST',
         body: formData,
@@ -82,19 +90,28 @@ const MenuUpload = ({ onDishesLoaded, loading, setLoading }: MenuUploadProps) =>
             try {
               const data = JSON.parse(line.slice(6)) // 移除 "data: " 前缀
               
-              if (data.error) {
+              // 处理错误
+              if (data.type === 'error') {
                 console.error('❌ 服务器错误:', data.error)
                 throw new Error(data.error)
               }
               
-              if (data.done) {
-                console.log('✅ 所有菜品已接收完成')
-                setLoading(false)
-                return
+              // 第一阶段：Markdown 流式输出
+              if (data.type === 'markdown') {
+                markdownBuffer += data.content
+                // 实时更新 Markdown 显示
+                onMarkdownUpdate(markdownBuffer)
+                console.log(`📝 Markdown 更新，当前长度: ${markdownBuffer.length} 字符`)
               }
               
-              if (data.dish) {
-                // 收到一个菜品，立即渲染
+              // Markdown 阶段完成
+              if (data.type === 'markdown_done') {
+                console.log('✅ Markdown 提取完成')
+                onMarkdownUpdate(markdownBuffer) // 确保最终更新
+              }
+              
+              // 第二阶段：NDJSON 菜品流式输出
+              if (data.type === 'dish' && data.dish) {
                 const dish: Dish = {
                   name: data.dish.name,
                   translation: data.dish.translation || undefined,
@@ -112,6 +129,13 @@ const MenuUpload = ({ onDishesLoaded, loading, setLoading }: MenuUploadProps) =>
                 
                 // 立即更新UI，显示已收到的菜品
                 onDishesLoaded([...dishes])
+              }
+              
+              // 全部完成
+              if (data.type === 'done') {
+                console.log('✅ 所有菜品已接收完成')
+                setLoading(false)
+                return
               }
             } catch (parseError) {
               console.warn('⚠️ 解析消息失败:', parseError, '原始数据:', line)
@@ -175,6 +199,7 @@ const MenuUpload = ({ onDishesLoaded, loading, setLoading }: MenuUploadProps) =>
             onClick={() => {
               setImagePreview(null)
               onDishesLoaded([])
+              onMarkdownUpdate('')
               if (fileInputRef.current) {
                 fileInputRef.current.value = ''
               }
@@ -199,4 +224,3 @@ const MenuUpload = ({ onDishesLoaded, loading, setLoading }: MenuUploadProps) =>
 }
 
 export default MenuUpload
-
