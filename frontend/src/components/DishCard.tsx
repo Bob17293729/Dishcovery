@@ -34,6 +34,7 @@ const DishCard = ({ dish, onToggleSelect, onDetailLoaded, onLoadingChange }: Dis
           dish_name: dish.name,
           translation: dish.translation,
           menu_description: dish.menuDescription,
+          translation_description: dish.translationDescription,
         }),
       })
 

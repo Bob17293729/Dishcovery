@@ -354,35 +354,50 @@ class OpenAIService:
             print(f"❌ 翻译失败: {error_msg}")
             raise Exception(f"翻译失败: {error_msg}")
 
-    async def get_dish_description(self, dish_name: str, translation: str = None) -> str:
+    async def get_dish_description(self, dish_name: str, translation: str = None, 
+                                   menu_description: str = None, translation_description: str = None) -> str:
         """
         获取单个菜品的描述
+        包含菜单中的原始描述信息
         """
         start_time = time.time()
-        prompt = f"""请为以下菜品提供详细描述（50-100字）：
+        prompt = f"""请为以下菜品提供详细描述（80-120字）：
 菜品名称：{dish_name}"""
         
         if translation:
             prompt += f"\n中文名称：{translation}"
         
-        prompt += "\n\n请提供菜品的详细描述，包括主要食材、口味特点、制作方式等信息。描述长度在50-100字之间。"
+        # 如果菜单中有描述，将其加入prompt
+        if translation_description:
+            prompt += f"\n菜单描述（中文）：{translation_description}"
+        elif menu_description:
+            prompt += f"\n菜单描述（英文）：{menu_description}"
+        
+        prompt += "\n\n要求："
+        prompt += "\n1. 基于菜单中的描述信息，生成专业、自然的中文菜品介绍"
+        prompt += "\n2. 不要逐字翻译，要理解菜品特点后重新组织语言"
+        prompt += "\n3. 可以适当补充菜品的特色、口感、制作方式等信息"
+        prompt += "\n4. 语言要流畅，让中文读者能够理解并产生食欲"
+        prompt += "\n5. 描述长度在80-120字之间"
 
         try:
             api_start_time = time.time()
             print(f"📝 开始生成菜品描述: {dish_name}")
+            if menu_description or translation_description:
+                print(f"   包含菜单描述: {translation_description or menu_description}")
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o-mini",
                 messages=[
                     {
                         "role": "user",
                         "content": prompt
                     }
                 ],
-                max_tokens=200
+                max_tokens=300
             )
             
             api_elapsed = time.time() - api_start_time
-            print(f"✅ GPT-4 API调用成功，耗时: {api_elapsed:.2f}秒")
+            print(f"✅ GPT-4o-mini API调用成功，耗时: {api_elapsed:.2f}秒")
             
             if not response.choices or not response.choices[0].message.content:
                 return "描述生成中..."

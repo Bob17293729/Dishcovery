@@ -45,6 +45,7 @@ class GetDishDetailRequest(BaseModel):
     dish_name: str
     translation: Optional[str] = None
     menu_description: Optional[str] = None
+    translation_description: Optional[str] = None
 
 
 @app.get("/")
@@ -106,7 +107,9 @@ async def get_dish_detail(request: GetDishDetailRequest):
         # 生成描述
         description = await openai_service.get_dish_description(
             request.dish_name,
-            request.translation
+            request.translation,
+            request.menu_description,
+            request.translation_description
         )
         
         # 生成图片
