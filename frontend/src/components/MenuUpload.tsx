@@ -112,9 +112,6 @@ const MenuUpload = ({ onDishesLoaded, onMarkdownUpdate, loading, setLoading }: M
               
               // 第二阶段：NDJSON 菜品流式输出
               if (data.type === 'dish' && data.dish) {
-                // 调试：打印原始数据
-                console.log('📦 收到原始 dish 数据:', data.dish)
-                
                 const dish: Dish = {
                   section: data.dish.section || '',
                   name_en: data.dish.name_en || '',
@@ -126,9 +123,6 @@ const MenuUpload = ({ onDishesLoaded, onMarkdownUpdate, loading, setLoading }: M
                   expanded: false,
                   loadingImage: false,
                 }
-                
-                // 调试：打印处理后的 dish 对象
-                console.log('✅ 处理后的 dish 对象:', dish)
                 
                 dishes.push(dish)
                 console.log(`📋 收到菜品 ${dishes.length}: ${dish.name_en || '未命名'}`)

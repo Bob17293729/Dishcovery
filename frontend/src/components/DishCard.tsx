@@ -53,9 +53,6 @@ const DishCard = ({ dish, onToggleExpand, onImageGenerated, onLoadingImageChange
     }
   }
 
-  // 调试：打印 dish 数据
-  console.log('DishCard 渲染，dish 数据:', dish)
-
   return (
     <div className="bg-white rounded-lg shadow-md p-4 mb-4 border-2 border-gray-200 hover:border-blue-300 hover:shadow-lg transition-all">
       {/* 分类标签 */}
