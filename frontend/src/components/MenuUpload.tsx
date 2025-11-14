@@ -28,13 +28,15 @@ const MenuUpload = ({ onDishesLoaded, loading, setLoading }: MenuUploadProps) =>
 
   const handleUpload = async (file: File) => {
     setLoading(true)
+    const dishes: Dish[] = [] // 用于累积接收到的菜品
+    
     try {
       console.log('📤 开始上传图片...')
       const formData = new FormData()
       formData.append('file', file)
 
-      // 1. 分析菜单
-      console.log('🔍 步骤1: 调用菜单识别API...')
+      // 流式分析菜单
+      console.log('🔍 步骤1: 调用菜单识别API（流式）...')
       const analyzeResponse = await fetch('/api/analyze-menu', {
         method: 'POST',
         body: formData,
@@ -42,39 +44,89 @@ const MenuUpload = ({ onDishesLoaded, loading, setLoading }: MenuUploadProps) =>
 
       console.log('📥 识别API响应状态:', analyzeResponse.status)
       
+      // 先检查响应状态
       if (!analyzeResponse.ok) {
         const errorText = await analyzeResponse.text()
         console.error('❌ 识别API错误:', errorText)
         throw new Error(`菜单分析失败: ${analyzeResponse.status} - ${errorText}`)
       }
 
-      const analyzeData = await analyzeResponse.json()
-      console.log('✅ 识别结果:', analyzeData)
-      const dishesFromAnalysis = analyzeData.dishes || []
+      // 检查响应是否为流式
+      if (!analyzeResponse.body) {
+        throw new Error('响应体为空')
+      }
 
-      if (!dishesFromAnalysis || dishesFromAnalysis.length === 0) {
+      const reader = analyzeResponse.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      console.log('📡 开始流式读取数据...')
+
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          console.log('✅ 流式读取完成')
+          break
+        }
+
+        // 解码数据并添加到缓冲区
+        buffer += decoder.decode(value, { stream: true })
+        
+        // 处理缓冲区中的完整消息（SSE格式：data: {...}\n\n）
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // 保留最后不完整的行
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6)) // 移除 "data: " 前缀
+              
+              if (data.error) {
+                console.error('❌ 服务器错误:', data.error)
+                throw new Error(data.error)
+              }
+              
+              if (data.done) {
+                console.log('✅ 所有菜品已接收完成')
+                setLoading(false)
+                return
+              }
+              
+              if (data.dish) {
+                // 收到一个菜品，立即渲染
+                const dish: Dish = {
+                  name: data.dish.name,
+                  translation: data.dish.translation || undefined,
+                  category: data.dish.category || undefined,
+                  categoryTranslation: data.dish.category_translation || undefined,
+                  menuDescription: data.dish.menu_description || undefined,
+                  translationDescription: data.dish.translation_description || undefined,
+                  description: undefined,
+                  selected: false,
+                  loadingDetail: false,
+                }
+                
+                dishes.push(dish)
+                console.log(`📋 收到菜品 ${dishes.length}: ${dish.name}`)
+                
+                // 立即更新UI，显示已收到的菜品
+                onDishesLoaded([...dishes])
+              }
+            } catch (parseError) {
+              console.warn('⚠️ 解析消息失败:', parseError, '原始数据:', line)
+            }
+          }
+        }
+      }
+
+      if (dishes.length === 0) {
         alert('未能识别到菜品，请确保上传的是清晰的菜单图片')
         setLoading(false)
         return
       }
 
-      console.log(`📋 识别到 ${dishesFromAnalysis.length} 个菜品:`, dishesFromAnalysis)
-
-      // 直接使用分析结果（已包含翻译和类别信息）
-      const dishes: Dish[] = dishesFromAnalysis.map((dish: any) => ({
-        name: dish.name,
-        translation: dish.translation || undefined,
-        category: dish.category || undefined,
-        categoryTranslation: dish.category_translation || undefined,
-        menuDescription: dish.menu_description || undefined, // 菜单中的原始描述（英文）
-        translationDescription: dish.translation_description || undefined, // 菜单描述的中文翻译
-        description: undefined, // AI生成的详细描述，初始不加载
-        selected: false,
-        loadingDetail: false,
-      }))
-
-      console.log('🎉 处理完成，加载菜品列表（包含翻译和类别）')
-      onDishesLoaded(dishes)
+      console.log(`🎉 处理完成，共收到 ${dishes.length} 个菜品`)
     } catch (error) {
       console.error('❌ 完整错误信息:', error)
       const errorMessage = error instanceof Error ? error.message : '处理失败，请重试'

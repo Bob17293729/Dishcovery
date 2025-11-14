@@ -1,8 +1,11 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
 import os
+import json
+import asyncio
 from dotenv import load_dotenv
 
 from services.openai_service import OpenAIService
@@ -56,34 +59,50 @@ async def root():
 @app.post("/api/analyze-menu")
 async def analyze_menu(file: UploadFile = File(...)):
     """
-    分析菜单图片，提取菜品名称和描述
+    分析菜单图片，提取菜品名称和描述（流式返回）
+    使用 Server-Sent Events (SSE) 格式逐个发送菜品
     """
-    try:
-        print(f"📥 收到图片上传请求: {file.filename}, 类型: {file.content_type}")
-        
-        # 读取文件内容
-        print("📖 开始读取文件内容...")
-        contents = await file.read()
-        print(f"✅ 文件读取完成，大小: {len(contents)} bytes")
-        
-        # 验证文件大小（限制为10MB）
-        if len(contents) > 10 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="图片文件过大，请上传小于10MB的图片")
-        
-        # 调用OpenAI服务识别菜品
-        print("🤖 开始调用OpenAI API识别菜品...")
-        dishes = await openai_service.analyze_menu_image(contents)
-        print(f"✅ 识别完成，找到 {len(dishes)} 个菜品")
-        
-        return {"dishes": dishes}
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback
-        error_detail = str(e)
-        print(f"❌ 分析菜单错误: {error_detail}")
-        print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"分析菜单失败: {error_detail}")
+    async def generate():
+        try:
+            print(f"📥 收到图片上传请求: {file.filename}, 类型: {file.content_type}")
+            
+            # 读取文件内容
+            print("📖 开始读取文件内容...")
+            contents = await file.read()
+            print(f"✅ 文件读取完成，大小: {len(contents)} bytes")
+            
+            # 验证文件大小（限制为10MB）
+            if len(contents) > 10 * 1024 * 1024:
+                yield f"data: {json.dumps({'error': '图片文件过大，请上传小于10MB的图片'})}\n\n"
+                return
+            
+            # 调用OpenAI服务识别菜品（流式）
+            print("🤖 开始调用OpenAI API识别菜品（流式）...")
+            
+            async for dish in openai_service.analyze_menu_image_stream(contents):
+                # 发送每个菜品
+                yield f"data: {json.dumps({'dish': dish})}\n\n"
+            
+            # 发送完成信号
+            yield f"data: {json.dumps({'done': True})}\n\n"
+            print("✅ 流式识别完成")
+            
+        except Exception as e:
+            import traceback
+            error_detail = str(e)
+            print(f"❌ 分析菜单错误: {error_detail}")
+            print(traceback.format_exc())
+            yield f"data: {json.dumps({'error': f'分析菜单失败: {error_detail}'})}\n\n"
+    
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # 禁用 nginx 缓冲
+        }
+    )
 
 
 @app.post("/api/translate")
