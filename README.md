@@ -1,5 +1,280 @@
 # Dishcovery 🍽️
 
+An intelligent menu recognition and translation application. Users can upload restaurant menu photos, and AI automatically recognizes dish information, generates Chinese translations and descriptions, and can also generate AI images for dishes of interest.
+
+## Features
+
+- 📸 **Intelligent Menu Recognition**: Automatically recognizes all text content in menu images using GPT-4o-mini Vision
+- 🔄 **Two-Stage Streaming Processing**: 
+  - Stage 1: Image → Markdown (real-time text extraction display)
+  - Stage 2: Markdown → NDJSON (real-time structured dish information display)
+- 🌐 **Smart Translation**: Automatically translates English dish names to Chinese
+- 📝 **Dish Descriptions**: AI generates detailed descriptions for each dish (80-120 characters, including taste, features, preparation methods, etc.)
+- 🥗 **Ingredient Extraction**: Automatically extracts and translates main ingredient lists
+- 🎨 **Image Generation**: Uses DALL-E 3 to generate beautiful images for selected dishes
+- 📱 **Mobile Optimized**: Responsive interface designed specifically for mobile devices
+- ⚡ **Real-time Feedback**: Streaming processing with real-time display of recognition progress and results
+
+## Tech Stack
+
+### Backend
+- Python 3.8+
+- FastAPI
+- OpenAI API (GPT-4o-mini Vision, GPT-4o-mini, DALL-E 3)
+- Pillow (image compression processing)
+- Server-Sent Events (SSE) streaming
+
+### Frontend
+- React 18
+- TypeScript
+- Tailwind CSS
+- Vite
+- react-markdown (Markdown rendering)
+
+## Project Structure
+
+```
+Dishcovery/
+├── backend/              # Backend API service
+│   ├── main.py          # FastAPI main file
+│   ├── services/        # Service layer
+│   │   └── openai_service.py  # OpenAI service (two-stage streaming)
+│   ├── requirements.txt
+│   └── env.example
+├── frontend/            # Frontend application
+│   ├── src/
+│   │   ├── components/  # React components
+│   │   │   ├── MenuUpload.tsx    # Menu upload component
+│   │   │   ├── DishList.tsx      # Dish list component
+│   │   │   ├── DishCard.tsx      # Dish card component
+│   │   │   └── MarkdownDisplay.tsx  # Markdown display component
+│   │   ├── App.tsx      # Main application component
+│   │   └── main.tsx     # Entry file
+│   ├── package.json
+│   └── vite.config.ts
+├── menu/                # Sample menu files
+└── README.md
+```
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.8+
+- Node.js 18+
+- OpenAI API Key
+
+### Backend Setup
+
+1. Navigate to backend directory:
+```bash
+cd backend
+```
+
+2. Create virtual environment (recommended):
+```bash
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Configure environment variables:
+```bash
+cp env.example .env
+# Edit .env file and add your OPENAI_API_KEY
+```
+
+5. Start backend service:
+```bash
+uvicorn main:app --reload
+```
+
+Backend service will start at `http://localhost:8000`
+
+### Frontend Setup
+
+1. Navigate to frontend directory:
+```bash
+cd frontend
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Start development server:
+```bash
+npm run dev
+```
+
+Frontend application will start at `http://localhost:5173`
+
+## API Endpoints
+
+### POST /api/analyze-menu
+Analyze menu image with two-stage streaming processing and return dish information
+
+**Request**: 
+- Content-Type: `multipart/form-data`
+- Parameter: `file` (image file, max 10MB)
+
+**Response**: 
+Server-Sent Events (SSE) streaming response with the following message types:
+
+1. **Markdown Stage** (Stage 1):
+```json
+{"type": "markdown", "content": "Extracted text snippet..."}
+{"type": "markdown_done"}
+```
+
+2. **NDJSON Stage** (Stage 2):
+```json
+{"type": "dish", "dish": {
+  "section": "Salads",
+  "name_en": "Caesar Salad",
+  "name_zh": "凯撒沙拉",
+  "ingredients_en": "romaine lettuce, caesar dressing, parmesan",
+  "ingredients_zh": "长叶生菜, 凯撒酱, 帕尔马干酪",
+  "description_zh": "经典凯撒沙拉，选用新鲜的长叶生菜...",
+  "image_prompt": "A beautiful Caesar salad with fresh romaine lettuce..."
+}}
+```
+
+3. **Done/Error**:
+```json
+{"type": "done"}
+{"type": "error", "error": "Error message"}
+```
+
+**Processing Flow**:
+1. Image compression (max edge ≤2000px, JPEG quality 85)
+2. Stage 1: Extract text as Markdown using GPT-4o-mini Vision
+3. Stage 2: Parse Markdown into structured NDJSON format using GPT-4o-mini
+4. Real-time streaming return, frontend can display results immediately
+
+### POST /api/generate-image
+Generate AI image for dish (DALL-E 3)
+
+**Request**:
+```json
+{
+  "image_prompt": "A beautiful Margherita pizza with fresh mozzarella..."
+}
+```
+
+**Response**:
+```json
+{
+  "image_url": "https://oaidalleapiprodscus..."
+}
+```
+
+### GET /
+Health check endpoint
+
+**Response**:
+```json
+{
+  "message": "Dishcovery API is running"
+}
+```
+
+## Usage Instructions
+
+1. **Upload Menu**: Click upload area and select restaurant menu photo (supports common image formats, max 10MB)
+2. **View Extraction Process in Real-time**: 
+   - Stage 1: Real-time display of Markdown text extracted from image
+   - Stage 2: Real-time display of parsed dish cards
+3. **View Dish Information**: Each dish card contains:
+   - English name and Chinese translation
+   - Main ingredients (English and Chinese)
+   - Detailed description (80-120 characters)
+4. **Expand Details**: Click dish card to expand and view full information
+5. **Generate Image**: Click "Generate Image" button to use DALL-E 3 to generate beautiful image for the dish
+6. **View Original Text**: Page bottom displays complete Markdown extraction results
+
+## Core Features Explained
+
+### Two-Stage Streaming Architecture
+
+This project adopts an innovative two-stage streaming architecture to improve user experience and system efficiency:
+
+**Stage 1: Image → Markdown**
+- Uses GPT-4o-mini Vision model to recognize menu images
+- Extracts all text content while maintaining original layout structure
+- Outputs standard Markdown format
+- Real-time streaming return, users can immediately see extraction progress
+
+**Stage 2: Markdown → NDJSON**
+- Uses GPT-4o-mini to parse Markdown content
+- Automatically completes incomplete dish names (e.g., "Chop" → "Chop Salad")
+- Generates structured data: category, dish name, ingredients, description, image prompt
+- Streams output item by item, frontend displays dish cards in real-time
+
+### Image Processing Optimization
+
+- Automatic compression: Automatically scales when longest edge exceeds 2000px
+- Format conversion: Uniformly converts to JPEG format (quality 85)
+- Size limit: Maximum upload file size 10MB
+
+### Data Structure
+
+Each dish contains the following fields:
+- `section`: Dish category (e.g., "Salads", "Pizzas")
+- `name_en`: Complete English dish name
+- `name_zh`: Chinese translation
+- `ingredients_en`: Main ingredients (English, comma-separated)
+- `ingredients_zh`: Main ingredients (Chinese, comma-separated)
+- `description_zh`: Detailed description (80-120 characters)
+- `image_prompt`: Image generation prompt (English)
+
+## Development Roadmap
+
+- [x] Stage 1: Project foundation setup
+- [x] Stage 2: Backend core functionality development (two-stage streaming)
+- [x] Stage 3: Frontend basic interface development
+- [x] Stage 4: Frontend-backend integration and complete workflow
+- [x] Stage 5: Streaming optimization and real-time feedback
+- [ ] Stage 6: Performance optimization and enhanced error handling
+
+## Notes
+
+- **API Key**: Requires valid OpenAI API Key supporting GPT-4o-mini and DALL-E 3
+- **API Costs**: 
+  - Image recognition uses GPT-4o-mini Vision (lower cost)
+  - Text parsing uses GPT-4o-mini (lower cost)
+  - Image generation uses DALL-E 3 (per-request pricing)
+- **Image Requirements**: 
+  - Recommended to use clear menu photos for best recognition results
+  - Supports common image formats (JPEG, PNG, WebP, etc.)
+  - Maximum file size: 10MB
+- **Processing Time**: 
+  - Markdown extraction: Usually 5-15 seconds (depends on menu complexity)
+  - NDJSON parsing: Usually 3-10 seconds (depends on number of dishes)
+  - Image generation: Usually 10-30 seconds
+- **Mobile Access**: Backend configured with CORS, supports mobile access (development environment allows all origins)
+
+## Technical Highlights
+
+- ✨ **Streaming Processing**: Uses SSE to implement real-time data streaming, improving user experience
+- 🎯 **Two-Stage Architecture**: Separates text extraction and structured parsing, improving accuracy and maintainability
+- 🖼️ **Smart Image Processing**: Automatic compression and format conversion, optimizing API calls
+- 📱 **Responsive Design**: Interface layout optimized specifically for mobile devices
+- 🔄 **Real-time Feedback**: Users can view processing progress and intermediate results in real-time
+
+## License
+
+MIT License
+
+---
+
+# Dishcovery 🍽️
+
 一个智能菜单识别与翻译应用，用户可以上传餐厅菜单照片，AI自动识别菜品信息并生成中文翻译和描述，还可以为感兴趣的菜品生成AI图片。
 
 ## 功能特性
