@@ -64,7 +64,7 @@ NDJSON_GENERATION_SYSTEM_PROMPT = """你是一名菜单结构化解析专家。
 
 【核心要求】
 每识别到一道菜，就立即输出一行 JSON，格式如下：
-{"section": "...", "name_en": "...", "description_en": "...", "name_zh": "...", "description_zh": "..."}
+{"section": "...", "name_en": "...", "name_zh": "...", "ingredients_en": "...", "ingredients_zh": "...", "description_zh": "...", "image_prompt": "..."}
 
 不等待全部菜识别完成。
 
@@ -72,8 +72,10 @@ NDJSON_GENERATION_SYSTEM_PROMPT = """你是一名菜单结构化解析专家。
 - section: 菜品所属分类（如 "Salads", "Pizzas", "Desserts"）
 - name_en: 完整的英文菜名（必须补全）
 - name_zh: 自然的中文翻译
-- description_en: 英文描述（如果有）
-- description_zh: 中文描述（如果有）
+- ingredients_en: 主要食材列表（英文，用逗号分隔，如 "tomato, mozzarella, basil"）
+- ingredients_zh: 主要食材列表（中文，用逗号分隔，如 "番茄, 马苏里拉奶酪, 罗勒"）
+- description_zh: 菜品的中文详细描述（80-120字，包含口感、特色、制作方式等）
+- image_prompt: 用于生成菜品图片的英文提示词（简洁描述菜品外观，如 "A beautiful Margherita pizza with fresh mozzarella, tomato sauce, and basil leaves on a wooden board"）
 
 【结构补全规则】
 - 如果菜名不完整，根据 section 自动补全：
@@ -83,6 +85,11 @@ NDJSON_GENERATION_SYSTEM_PROMPT = """你是一名菜单结构化解析专家。
 - 如果菜名已包含类别词（如 "Caesar Salad"），不要重复补全
 - 确保 name_en 是完整、规范的菜名
 
+【字段生成要求】
+- ingredients_en 和 ingredients_zh：从菜单中提取主要食材，如果没有明确列出，根据菜名推断
+- description_zh：基于菜单中的描述信息，生成专业、自然的中文菜品介绍，包含口感、特色、制作方式等
+- image_prompt：生成简洁的英文提示词，描述菜品的外观特征，用于 AI 图片生成
+
 【输出规则】
 - 绝对禁止输出数组、包裹的大 JSON
 - 绝对禁止输出 markdown 格式、注释、解释文字
@@ -90,6 +97,7 @@ NDJSON_GENERATION_SYSTEM_PROMPT = """你是一名菜单结构化解析专家。
 - 每一行必须是合法的 JSON 对象
 - 一行 = 一道菜
 - 立即输出，不要等待
+- 所有字段都必须有值（即使是空字符串）
 """
 
 # ============================================================================
@@ -226,7 +234,7 @@ class OpenAIService:
         async for chunk in self._stream_ndjson_generation(markdown_content):
             if chunk["type"] == "dish":
                 dish_count += 1
-                print(f"   → 收到菜品 {dish_count}: {chunk['dish']['name']}")
+                print(f"   → 收到菜品 {dish_count}: {chunk['dish']['name_en']}")
                 yield chunk
             elif chunk["type"] == "error":
                 yield chunk
@@ -420,14 +428,15 @@ class OpenAIService:
                     try:
                         data = json.loads(line)
                         
-                        # 格式化菜品结构
+                        # 格式化菜品结构（新字段结构）
                         dish = {
-                            "name": data.get("name_en", ""),
-                            "translation": data.get("name_zh", ""),
-                            "category": (data.get("section") or "").lower().replace(" ", "_"),
-                            "category_translation": data.get("section", ""),
-                            "menu_description": data.get("description_en") or None,
-                            "translation_description": data.get("description_zh") or None,
+                            "section": data.get("section", ""),
+                            "name_en": data.get("name_en", ""),
+                            "name_zh": data.get("name_zh", ""),
+                            "ingredients_en": data.get("ingredients_en", ""),
+                            "ingredients_zh": data.get("ingredients_zh", ""),
+                            "description_zh": data.get("description_zh", ""),
+                            "image_prompt": data.get("image_prompt", ""),
                         }
                         
                         yield {"type": "dish", "dish": dish}
@@ -442,12 +451,13 @@ class OpenAIService:
                 try:
                     data = json.loads(buffer.strip())
                     dish = {
-                        "name": data.get("name_en", ""),
-                        "translation": data.get("name_zh", ""),
-                        "category": (data.get("section") or "").lower().replace(" ", "_"),
-                        "category_translation": data.get("section", ""),
-                        "menu_description": data.get("description_en") or None,
-                        "translation_description": data.get("description_zh") or None,
+                        "section": data.get("section", ""),
+                        "name_en": data.get("name_en", ""),
+                        "name_zh": data.get("name_zh", ""),
+                        "ingredients_en": data.get("ingredients_en", ""),
+                        "ingredients_zh": data.get("ingredients_zh", ""),
+                        "description_zh": data.get("description_zh", ""),
+                        "image_prompt": data.get("image_prompt", ""),
                     }
                     yield {"type": "dish", "dish": dish}
                 except json.JSONDecodeError:
@@ -455,15 +465,15 @@ class OpenAIService:
         except Exception as e:
             yield {"type": "error", "error": f"NDJSON 生成失败: {str(e)}"}
 
-    async def get_dish_description(
+    async def get_dish_description_stream(
         self, 
         dish_name: str, 
         translation: str = None, 
         menu_description: str = None, 
         translation_description: str = None
-    ) -> str:
+    ) -> AsyncGenerator[str, None]:
         """
-        获取单个菜品的详细描述
+        流式获取单个菜品的详细描述
         
         Args:
             dish_name: 英文菜名
@@ -471,8 +481,8 @@ class OpenAIService:
             menu_description: 菜单中的英文描述
             translation_description: 菜单中的中文描述
             
-        Returns:
-            生成的菜品描述文本
+        Yields:
+            描述文本片段（逐个 token）
         """
         start_time = time.time()
         prompt = f"""请为以下菜品提供详细描述（80-120字）：
@@ -494,51 +504,95 @@ class OpenAIService:
         prompt += "\n5. 描述长度在80-120字之间"
 
         try:
-            print(f"📝 开始生成菜品描述: {dish_name}")
-            response = self.client.chat.completions.create(
+            print(f"📝 开始流式生成菜品描述: {dish_name}")
+            loop = asyncio.get_event_loop()
+            chunk_queue = Queue()
+            
+            def create_stream(queue):
+                """在后台线程中创建流"""
+                try:
+                    stream = self.client.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
+                        messages=[{"role": "user", "content": prompt}],
+                        stream=True,
                 max_tokens=300
             )
             
-            if not response.choices or not response.choices[0].message.content:
-                return "描述生成中..."
+                    for chunk in stream:
+                        queue.put(chunk)
+                    queue.put(None)  # 结束标记
+                except Exception as e:
+                    queue.put(e)  # 错误标记
             
-            description = response.choices[0].message.content.strip()
-            elapsed = time.time() - start_time
-            print(f"✅ 描述生成成功，耗时 {elapsed:.2f}s")
-            return description
+            executor = loop.run_in_executor(None, create_stream, chunk_queue)
+            
+            try:
+                while True:
+                    def get_chunk():
+                        try:
+                            return chunk_queue.get(timeout=0.1)
+                        except Empty:
+                            return None
+                    
+                    chunk = await loop.run_in_executor(None, get_chunk)
+                    
+                    if chunk is None:
+                        if executor.done():
+                            try:
+                                executor.result()
+                            except Exception as e:
+                                print(f"❌ 描述生成失败: {e}")
+                                yield f"描述生成失败: {str(e)}"
+                                return
+                            if chunk_queue.empty():
+                                break
+                        await asyncio.sleep(0.01)
+                        continue
+                    
+                    if isinstance(chunk, Exception):
+                        print(f"❌ 描述生成失败: {chunk}")
+                        yield f"描述生成失败: {str(chunk)}"
+                        return
+                    
+                    if not chunk.choices:
+                        continue
+                    
+                    delta = chunk.choices[0].delta
+                    if not delta:
+                        continue
+                    
+                    text = extract_text_from_delta(delta)
+                    if text:
+                        yield text
+                    
+                    await asyncio.sleep(0)
+                
+                elapsed = time.time() - start_time
+                print(f"✅ 描述生成完成，耗时 {elapsed:.2f}s")
+            except Exception as e:
+                print(f"❌ 描述生成失败: {e}")
+                yield f"描述生成失败: {str(e)}"
         except Exception as e:
             print(f"❌ 描述生成失败: {e}")
-            return "描述生成失败，请重试"
+            yield f"描述生成失败: {str(e)}"
 
-    async def generate_dish_image(
-        self, 
-        dish_name: str, 
-        translation: str = None, 
-        menu_description: str = None
-    ) -> str:
+    async def generate_dish_image(self, image_prompt: str) -> str:
         """
         使用 DALL-E 生成菜品图片
         
         Args:
-            dish_name: 英文菜名
-            translation: 中文翻译
-            menu_description: 菜单描述
+            image_prompt: 图片生成提示词（英文）
             
         Returns:
             生成的图片 URL
         """
         start_time = time.time()
-        prompt = f"A beautiful, appetizing photo of {dish_name}"
-        if translation:
-            prompt += f" ({translation})"
-        if menu_description:
-            prompt += f". The dish is described as: {menu_description}"
-        prompt += ", professional food photography, high quality, restaurant style"
+        
+        # 使用传入的 image_prompt，并添加通用修饰词
+        prompt = f"{image_prompt}, professional food photography, high quality, restaurant style"
         
         try:
-            print(f"🎨 开始生成图片: {dish_name}")
+            print(f"🎨 开始生成图片，提示词: {image_prompt[:50]}...")
             response = self.client.images.generate(
                 model="dall-e-3",
                 prompt=prompt,

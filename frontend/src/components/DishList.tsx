@@ -1,3 +1,7 @@
+/**
+ * 菜品列表组件
+ * 管理菜品列表的显示和状态
+ */
 import { Dish } from '../App'
 import DishCard from './DishCard'
 
@@ -9,27 +13,23 @@ interface DishListProps {
 }
 
 const DishList = ({ dishes, setDishes, loading, setLoading }: DishListProps) => {
-  const handleToggleSelect = (index: number) => {
+  const handleToggleExpand = (index: number) => {
     const newDishes = [...dishes]
-    newDishes[index].selected = !newDishes[index].selected
+    newDishes[index].expanded = !newDishes[index].expanded
     setDishes(newDishes)
   }
 
-  const handleDetailLoaded = (index: number, description: string, imageUrl: string) => {
+  const handleImageGenerated = (index: number, imageUrl: string) => {
     const newDishes = [...dishes]
-    newDishes[index].description = description
     newDishes[index].imageUrl = imageUrl
-    newDishes[index].selected = true
     setDishes(newDishes)
   }
 
-  const handleLoadingChange = (index: number, loading: boolean) => {
+  const handleLoadingImageChange = (index: number, loading: boolean) => {
     const newDishes = [...dishes]
-    newDishes[index].loadingDetail = loading
+    newDishes[index].loadingImage = loading
     setDishes(newDishes)
   }
-
-  const selectedCount = dishes.filter((d) => d.selected).length
 
   return (
     <div className="mt-8">
@@ -37,13 +37,8 @@ const DishList = ({ dishes, setDishes, loading, setLoading }: DishListProps) => 
         <h2 className="text-xl font-semibold mb-4 text-gray-700">
           识别到的菜品 ({dishes.length})
         </h2>
-        {selectedCount > 0 && (
-          <p className="text-sm text-gray-600 mb-4">
-            已查看 {selectedCount} 个菜品详情
-          </p>
-        )}
         <p className="text-xs text-gray-500">
-          点击任意菜品卡片查看详情和图片
+          点击"展开详情"查看完整描述，点击"生成参考图片"生成菜品图片
         </p>
       </div>
 
@@ -52,12 +47,12 @@ const DishList = ({ dishes, setDishes, loading, setLoading }: DishListProps) => 
           <DishCard
             key={index}
             dish={dish}
-            onToggleSelect={() => handleToggleSelect(index)}
-            onDetailLoaded={(description, imageUrl) => 
-              handleDetailLoaded(index, description, imageUrl)
+            onToggleExpand={() => handleToggleExpand(index)}
+            onImageGenerated={(imageUrl) => 
+              handleImageGenerated(index, imageUrl)
             }
-            onLoadingChange={(loading) => 
-              handleLoadingChange(index, loading)
+            onLoadingImageChange={(loading) => 
+              handleLoadingImageChange(index, loading)
             }
           />
         ))}
@@ -67,4 +62,3 @@ const DishList = ({ dishes, setDishes, loading, setLoading }: DishListProps) => 
 }
 
 export default DishList
-

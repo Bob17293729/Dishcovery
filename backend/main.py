@@ -29,9 +29,7 @@ openai_service = OpenAIService()
 
 
 class GenerateImageRequest(BaseModel):
-    dish_name: str
-    translation: Optional[str] = None
-    menu_description: Optional[str] = None
+    image_prompt: str
 
 
 class GetDishDetailRequest(BaseModel):
@@ -98,43 +96,74 @@ async def analyze_menu(file: UploadFile = File(...)):
 @app.post("/api/get-dish-detail")
 async def get_dish_detail(request: GetDishDetailRequest):
     """
-    获取单个菜品的描述和图片
+    获取单个菜品的描述和图片（流式返回描述）
+    使用 Server-Sent Events (SSE) 格式：
+    1. 先流式返回描述文本片段
+    2. 描述完成后返回图片URL
     """
-    try:
-        # 生成描述
-        description = await openai_service.get_dish_description(
-            request.dish_name,
-            request.translation,
-            request.menu_description,
-            request.translation_description
-        )
-        
-        # 生成图片
-        image_url = await openai_service.generate_dish_image(
-            request.dish_name,
-            request.translation,
-            request.menu_description
-        )
-        
-        return {
-            "description": description,
-            "image_url": image_url
+    async def generate():
+        try:
+            print(f"📥 收到菜品详情请求: {request.dish_name}")
+            
+            # 第一阶段：流式生成描述
+            description_buffer = ""
+            async for text_chunk in openai_service.get_dish_description_stream(
+                request.dish_name,
+                request.translation,
+                request.menu_description,
+                request.translation_description
+            ):
+                description_buffer += text_chunk
+                # 流式发送描述片段
+                yield f"data: {json.dumps({'type': 'description', 'content': text_chunk})}\n\n"
+            
+            # 描述生成完成
+            yield f"data: {json.dumps({'type': 'description_done'})}\n\n"
+            print(f"✅ 描述生成完成，长度: {len(description_buffer)} 字符")
+            
+            # 第二阶段：生成图片
+            print("🎨 开始生成图片...")
+            try:
+                image_url = await openai_service.generate_dish_image(
+                    request.dish_name,
+                    request.translation,
+                    request.menu_description
+                )
+                # 发送图片URL
+                yield f"data: {json.dumps({'type': 'image', 'image_url': image_url})}\n\n"
+                print("✅ 图片生成完成")
+            except Exception as e:
+                print(f"❌ 图片生成失败: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'error': f'图片生成失败: {str(e)}'})}\n\n"
+            
+            # 全部完成
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            
+        except Exception as e:
+            import traceback
+            error_detail = str(e)
+            print(f"❌ 获取菜品详情错误: {error_detail}")
+            print(traceback.format_exc())
+            yield f"data: {json.dumps({'type': 'error', 'error': f'获取菜品详情失败: {error_detail}'})}\n\n"
+    
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # 禁用 nginx 缓冲
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取菜品详情失败: {str(e)}")
+    )
 
 
 @app.post("/api/generate-image")
 async def generate_image(request: GenerateImageRequest):
     """
-    为选中的菜品生成AI图片
+    根据 image_prompt 生成菜品参考图片
     """
     try:
-        image_url = await openai_service.generate_dish_image(
-            request.dish_name, 
-            request.translation,
-            request.menu_description
-        )
+        image_url = await openai_service.generate_dish_image(request.image_prompt)
         return {"image_url": image_url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"图片生成失败: {str(e)}")

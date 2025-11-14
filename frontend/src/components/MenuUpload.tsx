@@ -112,20 +112,26 @@ const MenuUpload = ({ onDishesLoaded, onMarkdownUpdate, loading, setLoading }: M
               
               // 第二阶段：NDJSON 菜品流式输出
               if (data.type === 'dish' && data.dish) {
+                // 调试：打印原始数据
+                console.log('📦 收到原始 dish 数据:', data.dish)
+                
                 const dish: Dish = {
-                  name: data.dish.name,
-                  translation: data.dish.translation || undefined,
-                  category: data.dish.category || undefined,
-                  categoryTranslation: data.dish.category_translation || undefined,
-                  menuDescription: data.dish.menu_description || undefined,
-                  translationDescription: data.dish.translation_description || undefined,
-                  description: undefined,
-                  selected: false,
-                  loadingDetail: false,
+                  section: data.dish.section || '',
+                  name_en: data.dish.name_en || '',
+                  name_zh: data.dish.name_zh || '',
+                  ingredients_en: data.dish.ingredients_en || '',
+                  ingredients_zh: data.dish.ingredients_zh || '',
+                  description_zh: data.dish.description_zh || '',
+                  image_prompt: data.dish.image_prompt || '',
+                  expanded: false,
+                  loadingImage: false,
                 }
                 
+                // 调试：打印处理后的 dish 对象
+                console.log('✅ 处理后的 dish 对象:', dish)
+                
                 dishes.push(dish)
-                console.log(`📋 收到菜品 ${dishes.length}: ${dish.name}`)
+                console.log(`📋 收到菜品 ${dishes.length}: ${dish.name_en || '未命名'}`)
                 
                 // 立即更新UI，显示已收到的菜品
                 onDishesLoaded([...dishes])

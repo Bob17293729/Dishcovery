@@ -10,16 +10,16 @@ import DishList from './components/DishList'
 import MarkdownDisplay from './components/MarkdownDisplay'
 
 export interface Dish {
-  name: string
-  translation?: string
-  category?: string  // 类别（英文，如 salad, soup）
-  categoryTranslation?: string  // 类别翻译（中文，如 沙拉, 汤品）
-  description?: string
-  menuDescription?: string  // 菜单中的原始描述（英文）
-  translationDescription?: string  // 菜单描述的中文翻译
-  imageUrl?: string
-  selected?: boolean
-  loadingDetail?: boolean
+  section: string  // 菜品所属分类
+  name_en: string  // 英文菜名
+  name_zh: string  // 中文菜名
+  ingredients_en: string  // 主要食材（英文）
+  ingredients_zh: string  // 主要食材（中文）
+  description_zh: string  // 中文详细描述
+  image_prompt: string  // 图片生成提示词
+  imageUrl?: string  // 生成的图片URL
+  expanded?: boolean  // 是否展开详情
+  loadingImage?: boolean  // 是否正在生成图片
 }
 
 function App() {
