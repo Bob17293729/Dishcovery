@@ -5,8 +5,11 @@ import DishList from './components/DishList'
 export interface Dish {
   name: string
   translation?: string
+  category?: string  // 类别（英文，如 salad, soup）
+  categoryTranslation?: string  // 类别翻译（中文，如 沙拉, 汤品）
   description?: string
-  menuDescription?: string  // 菜单中的原始描述
+  menuDescription?: string  // 菜单中的原始描述（英文）
+  translationDescription?: string  // 菜单描述的中文翻译
   imageUrl?: string
   selected?: boolean
   loadingDetail?: boolean

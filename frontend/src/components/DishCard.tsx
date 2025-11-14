@@ -65,13 +65,23 @@ const DishCard = ({ dish, onToggleSelect, onDetailLoaded, onLoadingChange }: Dis
     >
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1">
+          {dish.categoryTranslation && (
+            <span className="inline-block px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium mb-2">
+              {dish.categoryTranslation}
+            </span>
+          )}
           <h3 className="text-lg font-semibold text-gray-800">{dish.name}</h3>
           {dish.translation && (
             <p className="text-base text-blue-600 font-medium mt-1">
               {dish.translation}
             </p>
           )}
-          {dish.menuDescription && (
+          {dish.translationDescription && (
+            <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+              {dish.translationDescription}
+            </p>
+          )}
+          {!dish.translationDescription && dish.menuDescription && (
             <p className="text-xs text-gray-500 mt-2 leading-relaxed italic">
               {dish.menuDescription}
             </p>

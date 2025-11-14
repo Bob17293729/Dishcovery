@@ -60,37 +60,20 @@ const MenuUpload = ({ onDishesLoaded, loading, setLoading }: MenuUploadProps) =>
 
       console.log(`📋 识别到 ${dishesFromAnalysis.length} 个菜品:`, dishesFromAnalysis)
 
-      // 2. 只翻译菜品名称
-      console.log('🌐 步骤2: 调用翻译API...')
-      const translateResponse = await fetch('/api/translate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ dishes: dishesFromAnalysis }),
-      })
-
-      console.log('📥 翻译API响应状态:', translateResponse.status)
-
-      if (!translateResponse.ok) {
-        const errorText = await translateResponse.text()
-        console.error('❌ 翻译API错误:', errorText)
-        throw new Error(`翻译失败: ${translateResponse.status} - ${errorText}`)
-      }
-
-      const translateData = await translateResponse.json()
-      console.log('✅ 翻译结果:', translateData)
-      
-      const dishes: Dish[] = translateData.dishes.map((dish: any) => ({
+      // 直接使用分析结果（已包含翻译和类别信息）
+      const dishes: Dish[] = dishesFromAnalysis.map((dish: any) => ({
         name: dish.name,
-        translation: dish.translation,
-        menuDescription: dish.menu_description || undefined, // 菜单中的原始描述
+        translation: dish.translation || undefined,
+        category: dish.category || undefined,
+        categoryTranslation: dish.category_translation || undefined,
+        menuDescription: dish.menu_description || undefined, // 菜单中的原始描述（英文）
+        translationDescription: dish.translation_description || undefined, // 菜单描述的中文翻译
         description: undefined, // AI生成的详细描述，初始不加载
         selected: false,
-        loadingDetail: false, // 添加加载状态
+        loadingDetail: false,
       }))
 
-      console.log('🎉 处理完成，加载菜品列表（仅翻译）')
+      console.log('🎉 处理完成，加载菜品列表（包含翻译和类别）')
       onDishesLoaded(dishes)
     } catch (error) {
       console.error('❌ 完整错误信息:', error)

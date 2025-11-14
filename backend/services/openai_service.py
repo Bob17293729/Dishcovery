@@ -19,9 +19,14 @@ class OpenAIService:
 
     async def analyze_menu_image(self, image_bytes: bytes) -> List[Dict]:
         """
-        使用GPT-4 Vision分析菜单图片，提取菜品名称和描述
-        返回包含 name 和 menu_description 的字典列表
+        使用GPT-4o-mini分析菜单图片，分两步：
+        1. 提取菜单结构为Markdown格式
+        2. 从Markdown提取菜品信息（包含类别和翻译）为JSON格式
+        返回包含 name, category, menu_description, translation, category_translation, translation_description 的字典列表
         """
+        import json
+        import re
+        
         start_time = time.time()
         print(f"🖼️  原始图片大小: {len(image_bytes)} bytes")
         
@@ -85,9 +90,13 @@ class OpenAIService:
         print(f"✅ Base64转换完成，长度: {len(base64_image)} 字符")
         
         try:
-            api_start_time = time.time()
-            print("🚀 开始调用OpenAI GPT-4o-mini API...")
-            response = self.client.chat.completions.create(
+            # ========== 第一步：提取菜单结构为Markdown ==========
+            print("\n" + "="*70)
+            print("📋 步骤1: 提取菜单结构（Markdown格式）")
+            print("="*70)
+            
+            step1_start = time.time()
+            step1_response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
                     {
@@ -95,25 +104,26 @@ class OpenAIService:
                         "content": [
                             {
                                 "type": "text",
-                                "text": """请仔细分析这张餐厅菜单图片，提取出所有菜品的完整信息。
+                                "text": """请仔细分析这张餐厅菜单图片，提取菜单的结构和内容，以Markdown格式返回。
 
-重要要求：
-1. 注意菜单的类别（section），比如在"Salad"类别下的"Caesar"应该识别为"Caesar Salad"
-2. 提取完整的菜品名称，包括类别信息
-3. 如果菜单中有菜品描述/介绍，也要一起提取
-4. 返回JSON格式，每个菜品包含name（完整名称）和menu_description（菜单中的描述，如果没有则为null）
+要求：
+1. 保留菜单的类别（section）结构，例如 "Salad"、"Soup"、"Main Course" 等
+2. 在每个类别下列出该类别下的所有菜品
+3. 如果菜品有描述，也要包含在Markdown中
+4. 使用Markdown的标题（#）表示类别，列表（-）表示菜品
 
-返回格式：
-{
-  "dishes": [
-    {
-      "name": "完整菜品名称",
-      "menu_description": "菜单中的描述文字，如果没有则为null"
-    }
-  ]
-}
+返回格式示例：
+# Salad
+- Caesar Salad
+  Fresh romaine lettuce with Caesar dressing
+- Greek Salad
+  Mixed greens with feta cheese
 
-只返回JSON，不要其他文字。如果图片不是菜单或无法识别，返回 {"dishes": []}。"""
+# Soup
+- Tomato Soup
+- French Onion Soup
+
+只返回Markdown格式的菜单结构，不要其他说明文字。如果图片不是菜单或无法识别，返回空内容。"""
                             },
                             {
                                 "type": "image_url",
@@ -124,50 +134,97 @@ class OpenAIService:
                         ]
                     }
                 ],
-                max_tokens=2000  # 增加token限制以支持描述
+                max_tokens=3000
             )
             
-            api_elapsed = time.time() - api_start_time
-            print(f"✅ OpenAI API调用成功，耗时: {api_elapsed:.2f}秒")
+            step1_elapsed = time.time() - step1_start
+            print(f"✅ 步骤1完成，耗时: {step1_elapsed:.2f}秒")
             
-            if not response.choices or not response.choices[0].message.content:
-                print("⚠️  API返回空内容")
+            if not step1_response.choices or not step1_response.choices[0].message.content:
+                print("⚠️  步骤1返回空内容")
                 return []
             
-            content = response.choices[0].message.content
-            print(f"📝 API返回内容: {content[:500]}...")
+            markdown_menu = step1_response.choices[0].message.content.strip()
+            print(f"📝 Markdown菜单预览: {markdown_menu[:300]}...")
+            
+            # ========== 第二步：从Markdown提取JSON（包含类别和翻译） ==========
+            print("\n" + "="*70)
+            print("🌐 步骤2: 提取菜品信息并翻译（JSON格式）")
+            print("="*70)
+            
+            step2_start = time.time()
+            step2_prompt = f"""请根据以下菜单的Markdown结构，提取所有菜品信息，并提供专业、自然的中文翻译。
+
+菜单结构：
+{markdown_menu}
+
+要求：
+1. 提取每个菜品的完整英文名称（name）
+2. 识别菜品所属的类别（category），使用英文小写，如：salad, soup, appetizer, main_course, dessert, drink 等
+3. 提取菜单中的描述（menu_description），如果没有则为null
+4. 为菜品名称提供专业、自然的中文翻译（translation），不要直译，要符合中文餐饮行业表达习惯
+5. 为类别提供中文翻译（category_translation），如：salad -> 沙拉, soup -> 汤品
+6. 如果菜品有描述，也要提供专业、自然的中文翻译（translation_description），不要直译
+
+返回JSON格式：
+{{
+  "dishes": [
+    {{
+      "name": "完整英文菜品名称",
+      "category": "类别英文（小写）",
+      "menu_description": "菜单中的英文描述，如果没有则为null",
+      "translation": "菜品名称的中文翻译（专业、自然）",
+      "category_translation": "类别的中文翻译",
+      "translation_description": "描述的中文翻译（如果有描述），如果没有则为null"
+    }}
+  ]
+}}
+
+只返回JSON，不要其他文字。"""
+            
+            step2_response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": step2_prompt
+                    }
+                ],
+                max_tokens=4000
+            )
+            
+            step2_elapsed = time.time() - step2_start
+            print(f"✅ 步骤2完成，耗时: {step2_elapsed:.2f}秒")
+            
+            if not step2_response.choices or not step2_response.choices[0].message.content:
+                print("⚠️  步骤2返回空内容")
+                return []
+            
+            step2_content = step2_response.choices[0].message.content.strip()
+            print(f"📝 步骤2返回内容预览: {step2_content[:500]}...")
             
             # 解析JSON响应
-            import json
-            import re
-            
             # 尝试从文本中提取JSON
-            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            json_match = re.search(r'\{.*\}', step2_content, re.DOTALL)
             if json_match:
-                content = json_match.group(0)
+                step2_content = json_match.group(0)
             
             try:
-                result = json.loads(content)
+                result = json.loads(step2_content)
                 if isinstance(result, dict) and "dishes" in result:
                     dishes = result["dishes"]
                     total_elapsed = time.time() - start_time
-                    print(f"🍽️  解析到 {len(dishes)} 个菜品，总耗时: {total_elapsed:.2f}秒")
+                    print(f"\n🍽️  解析到 {len(dishes)} 个菜品，总耗时: {total_elapsed:.2f}秒")
+                    print("="*70)
                     return dishes
                 else:
-                    print("⚠️  返回格式不正确，尝试解析为列表")
-                    # 兼容旧格式：如果返回的是纯文本列表
-                    dish_names = [line.strip() for line in content.split('\n') if line.strip()]
-                    return [{"name": name, "menu_description": None} for name in dish_names]
+                    print("⚠️  返回格式不正确，未找到dishes字段")
+                    return []
             except json.JSONDecodeError as json_err:
                 print(f"⚠️  JSON解析失败: {json_err}")
-                # 如果JSON解析失败，尝试提取菜品名称
-                dish_names = [line.strip() for line in content.split('\n') if line.strip() and not line.strip().startswith('{')]
-                if dish_names:
-                    print(f"🍽️  使用备用解析方法，找到 {len(dish_names)} 个菜品")
-                    return [{"name": name, "menu_description": None} for name in dish_names]
-                else:
-                    print("❌ 无法解析返回内容")
-                    return []
+                print(f"原始内容: {step2_content[:1000]}")
+                return []
+                
         except Exception as e:
             error_msg = str(e)
             print(f"❌ OpenAI API错误详情: {error_msg}")
